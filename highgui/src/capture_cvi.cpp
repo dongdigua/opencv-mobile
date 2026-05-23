@@ -45,7 +45,6 @@ namespace cv {
 // 2 = milkv-duo256m
 // 3 = licheerv-nano
 // 4 = milkv-duos
-// 5 = licheerv-nano final version
 static int get_device_model()
 {
     static int device_model = -1;
@@ -75,14 +74,7 @@ static int get_device_model()
         if (strncmp(buf, "LicheeRv Nano", 13) == 0)
         {
             // licheerv nano
-            if (access("/boot/alpha", R_OK) == 0)
-            {
-                device_model = 3;
-            }
-            else
-            {
-                device_model = 5;
-            }
+            device_model = 3;
         }
         if (strncmp(buf, "Milk-V DuoS", 11) == 0)
         {
@@ -261,10 +253,6 @@ static int load_sys_library()
     if (!libsys)
     {
         libsys = dlopen("/mnt/system/lib/libsys.so", RTLD_LOCAL | RTLD_NOW);
-    }
-    if (!libsys)
-    {
-        libsys = dlopen("/mnt/system/usr/lib/libsys.so", RTLD_LOCAL | RTLD_NOW);
     }
     if (!libsys)
     {
@@ -511,6 +499,10 @@ typedef struct _VI_DEV_ATTR_S {
     CVI_U32 switchGpioPin; /*switch pin*/
 
     CVI_U8 switchGPioPol; /*switch pol*/
+
+  #ifdef DUO_SDK_V2
+	CVI_BOOL disEnableSbm; /*Sns timing support SBM or not*/  
+  #endif  
 } VI_DEV_ATTR_S;
 
 typedef enum _VI_PIPE_BYPASS_MODE_E {
@@ -837,6 +829,10 @@ static void* libvpu_cvi_bin_isp = 0;
 static void* libvpu_cvi_bin = 0;
 static void* libvpu = 0;
 
+#ifdef DUO_SDK_V2
+static void* libvpu_vi=0;
+#endif
+
 static PFN_CVI_VI_SetDevAttr CVI_VI_SetDevAttr = 0;
 static PFN_CVI_VI_EnableDev CVI_VI_EnableDev = 0;
 static PFN_CVI_VI_DisableDev CVI_VI_DisableDev = 0;
@@ -920,6 +916,15 @@ static int unload_vpu_library()
         dlclose(libvpu);
         libvpu = 0;
     }
+    
+#ifdef DUO_SDK_V2
+    if (libvpu_vi)
+    {
+        dlclose(libvpu_vi);
+        libvpu_vi = 0;
+    }
+#endif
+
 
     CVI_VI_SetDevAttr = 0;
     CVI_VI_EnableDev = 0;
@@ -977,10 +982,6 @@ static int load_vpu_library()
     }
     if (!libvpu_sys)
     {
-        libvpu_sys = dlopen("/mnt/system/usr/lib/libsys.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libvpu_sys)
-    {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
@@ -989,10 +990,6 @@ static int load_vpu_library()
     if (!libvpu_awb)
     {
         libvpu_awb = dlopen("/mnt/system/lib/libawb.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libvpu_awb)
-    {
-        libvpu_awb = dlopen("/mnt/system/usr/lib/libawb.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_awb)
     {
@@ -1007,10 +1004,6 @@ static int load_vpu_library()
     }
     if (!libvpu_ae)
     {
-        libvpu_ae = dlopen("/mnt/system/usr/lib/libae.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libvpu_ae)
-    {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
@@ -1019,10 +1012,6 @@ static int load_vpu_library()
     if (!libvpu_isp_algo)
     {
         libvpu_isp_algo = dlopen("/mnt/system/lib/libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libvpu_isp_algo)
-    {
-        libvpu_isp_algo = dlopen("/mnt/system/usr/lib/libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_isp_algo)
     {
@@ -1037,10 +1026,6 @@ static int load_vpu_library()
     }
     if (!libvpu_isp)
     {
-        libvpu_isp = dlopen("/mnt/system/usr/lib/libisp.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libvpu_isp)
-    {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
@@ -1049,10 +1034,6 @@ static int load_vpu_library()
     if (!libvpu_cvi_bin_isp)
     {
         libvpu_cvi_bin_isp = dlopen("/mnt/system/lib/libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libvpu_cvi_bin_isp)
-    {
-        libvpu_cvi_bin_isp = dlopen("/mnt/system/usr/lib/libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_cvi_bin_isp)
     {
@@ -1067,28 +1048,67 @@ static int load_vpu_library()
     }
     if (!libvpu_cvi_bin)
     {
-        libvpu_cvi_bin = dlopen("/mnt/system/usr/lib/libcvi_bin.so", RTLD_GLOBAL | RTLD_LAZY);
+        fprintf(stderr, "%s\n", dlerror());
+        goto OUT;
     }
-    if (!libvpu_cvi_bin)
+
+ #ifdef DUO_SDK_V2 
+    libvpu = dlopen("libvpss.so", RTLD_LOCAL | RTLD_NOW);
+ #else     
+    libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
+#endif
+
+    if (!libvpu)
+    {
+#ifdef DUO_SDK_V2        
+        libvpu = dlopen("/mnt/system/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+ #else
+        libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW); 
+ #endif
+    }
+    
+    if (!libvpu)
     {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
 
-    libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
-    if (!libvpu)
+#ifdef DUO_SDK_V2
+
+    libvpu_vi = dlopen("libvi.so", RTLD_GLOBAL | RTLD_LAZY);
+    if (!libvpu_vi)
     {
-        libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        libvpu_vi = dlopen("/mnt/system/lib/libvi.so", RTLD_GLOBAL | RTLD_LAZY);
     }
-    if (!libvpu)
-    {
-        libvpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
-    }
-    if (!libvpu)
+    if (!libvpu_vi)
     {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
+
+#endif 
+
+
+#ifdef DUO_SDK_V2  
+
+    CVI_VI_SetDevAttr = (PFN_CVI_VI_SetDevAttr)dlsym(libvpu_vi, "CVI_VI_SetDevAttr");
+    CVI_VI_EnableDev = (PFN_CVI_VI_EnableDev)dlsym(libvpu_vi, "CVI_VI_EnableDev");
+    CVI_VI_DisableDev = (PFN_CVI_VI_DisableDev)dlsym(libvpu_vi, "CVI_VI_DisableDev");
+    CVI_VI_CreatePipe = (PFN_CVI_VI_CreatePipe)dlsym(libvpu_vi, "CVI_VI_CreatePipe");
+    CVI_VI_DestroyPipe = (PFN_CVI_VI_DestroyPipe)dlsym(libvpu_vi, "CVI_VI_DestroyPipe");
+    CVI_VI_SetPipeAttr = (PFN_CVI_VI_SetPipeAttr)dlsym(libvpu_vi, "CVI_VI_SetPipeAttr");
+    CVI_VI_StartPipe = (PFN_CVI_VI_StartPipe)dlsym(libvpu_vi, "CVI_VI_StartPipe");
+    CVI_VI_StopPipe = (PFN_CVI_VI_StopPipe)dlsym(libvpu_vi, "CVI_VI_StopPipe");
+    CVI_VI_AttachVbPool = (PFN_CVI_VI_AttachVbPool)dlsym(libvpu_vi, "CVI_VI_AttachVbPool");
+    CVI_VI_DetachVbPool = (PFN_CVI_VI_DetachVbPool)dlsym(libvpu_vi, "CVI_VI_DetachVbPool");
+    CVI_VI_SetChnAttr = (PFN_CVI_VI_SetChnAttr)dlsym(libvpu_vi, "CVI_VI_SetChnAttr");
+    CVI_VI_EnableChn = (PFN_CVI_VI_EnableChn)dlsym(libvpu_vi, "CVI_VI_EnableChn");
+    CVI_VI_DisableChn = (PFN_CVI_VI_DisableChn)dlsym(libvpu_vi, "CVI_VI_DisableChn");
+    CVI_VI_SetChnCrop = (PFN_CVI_VI_SetChnCrop)dlsym(libvpu_vi, "CVI_VI_SetChnCrop");
+    CVI_VI_GetChnFrame = (PFN_CVI_VI_GetChnFrame)dlsym(libvpu_vi, "CVI_VI_GetChnFrame");
+    CVI_VI_ReleaseChnFrame = (PFN_CVI_VI_ReleaseChnFrame)dlsym(libvpu_vi, "CVI_VI_ReleaseChnFrame");
+
+#else
 
     CVI_VI_SetDevAttr = (PFN_CVI_VI_SetDevAttr)dlsym(libvpu, "CVI_VI_SetDevAttr");
     CVI_VI_EnableDev = (PFN_CVI_VI_EnableDev)dlsym(libvpu, "CVI_VI_EnableDev");
@@ -1106,6 +1126,9 @@ static int load_vpu_library()
     CVI_VI_SetChnCrop = (PFN_CVI_VI_SetChnCrop)dlsym(libvpu, "CVI_VI_SetChnCrop");
     CVI_VI_GetChnFrame = (PFN_CVI_VI_GetChnFrame)dlsym(libvpu, "CVI_VI_GetChnFrame");
     CVI_VI_ReleaseChnFrame = (PFN_CVI_VI_ReleaseChnFrame)dlsym(libvpu, "CVI_VI_ReleaseChnFrame");
+
+#endif
+
 
     CVI_VPSS_AttachVbPool = (PFN_CVI_VPSS_AttachVbPool)dlsym(libvpu, "CVI_VPSS_AttachVbPool");
     CVI_VPSS_CreateGrp = (PFN_CVI_VPSS_CreateGrp)dlsym(libvpu, "CVI_VPSS_CreateGrp");
@@ -1790,6 +1813,10 @@ typedef struct _ISP_SNS_OBJ_S {
     CVI_VOID (*pfnPatchI2cAddr)(CVI_S32 s32I2cAddr);
     CVI_S32 (*pfnGetRxAttr)(VI_PIPE ViPipe, SNS_COMBO_DEV_ATTR_S *);
     CVI_S32 (*pfnExpSensorCb)(ISP_SENSOR_EXP_FUNC_S *);
+ #ifdef DUO_SDK_V2   
+ // duo-buildroot-sdk-v2/cvi_mpi/include/cvi_sns_ctrl.h
+    CVI_VOID (*pfnSetSensorSlave)(VI_PIPE ViPipe);	/*Set sensor as slave device*/  
+ #endif   
     CVI_S32 (*pfnExpAeCb)(AE_SENSOR_EXP_FUNC_S *);
     CVI_S32 (*pfnSnsProbe)(VI_PIPE ViPipe);
 } ISP_SNS_OBJ_S;
@@ -1862,10 +1889,6 @@ static int load_sns_obj_library()
     }
     if (!libsns_obj_sys)
     {
-        libsns_obj_sys = dlopen("/mnt/system/usr/lib/libsys.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libsns_obj_sys)
-    {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
@@ -1874,10 +1897,6 @@ static int load_sns_obj_library()
     if (!libsns_obj_ae)
     {
         libsns_obj_ae = dlopen("/mnt/system/lib/libae.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libsns_obj_ae)
-    {
-        libsns_obj_ae = dlopen("/mnt/system/usr/lib/libae.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libsns_obj_ae)
     {
@@ -1892,10 +1911,6 @@ static int load_sns_obj_library()
     }
     if (!libsns_obj_awb)
     {
-        libsns_obj_awb = dlopen("/mnt/system/usr/lib/libawb.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libsns_obj_awb)
-    {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
@@ -1904,10 +1919,6 @@ static int load_sns_obj_library()
     if (!libsns_obj_isp)
     {
         libsns_obj_isp = dlopen("/mnt/system/lib/libisp.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libsns_obj_isp)
-    {
-        libsns_obj_isp = dlopen("/mnt/system/usr/lib/libisp.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libsns_obj_isp)
     {
@@ -1925,10 +1936,6 @@ static int load_sns_obj_library()
         }
         if (!libsns_obj)
         {
-            libsns_obj = dlopen("/mnt/system/usr/lib/libsns_gc2083.so", RTLD_LOCAL | RTLD_NOW);
-        }
-        if (!libsns_obj)
-        {
             fprintf(stderr, "%s\n", dlerror());
             goto OUT;
         }
@@ -1942,10 +1949,6 @@ static int load_sns_obj_library()
         if (!libsns_obj)
         {
             libsns_obj = dlopen("/mnt/system/lib/libsns_gc4653.so", RTLD_LOCAL | RTLD_NOW);
-        }
-        if (!libsns_obj)
-        {
-            libsns_obj = dlopen("/mnt/system/usr/lib/libsns_gc4653.so", RTLD_LOCAL | RTLD_NOW);
         }
         if (!libsns_obj)
         {
@@ -2255,10 +2258,6 @@ static int load_ae_library()
     }
     if (!libae)
     {
-        libae = dlopen("/mnt/system/usr/lib/libae.so", RTLD_LOCAL | RTLD_NOW);
-    }
-    if (!libae)
-    {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
@@ -2322,10 +2321,6 @@ static int load_awb_library()
     if (!libawb)
     {
         libawb = dlopen("/mnt/system/lib/libawb.so", RTLD_LOCAL | RTLD_NOW);
-    }
-    if (!libawb)
-    {
-        libawb = dlopen("/mnt/system/usr/lib/libawb.so", RTLD_LOCAL | RTLD_NOW);
     }
     if (!libawb)
     {
@@ -2405,10 +2400,6 @@ static int load_isp_library()
     if (!libisp)
     {
         libisp = dlopen("/mnt/system/lib/libisp.so", RTLD_LOCAL | RTLD_NOW);
-    }
-    if (!libisp)
-    {
-        libisp = dlopen("/mnt/system/usr/lib/libisp.so", RTLD_LOCAL | RTLD_NOW);
     }
     if (!libisp)
     {
@@ -2519,22 +2510,23 @@ static int load_cvi_bin_library()
     }
     if (!libcvi_bin_cvi_bin_isp)
     {
-        libcvi_bin_cvi_bin_isp = dlopen("/mnt/system/usr/lib/libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libcvi_bin_cvi_bin_isp)
-    {
         fprintf(stderr, "%s\n", dlerror());
         goto OUT;
     }
 
+ #ifdef DUO_SDK_V2   
+    libcvi_bin_vpu = dlopen("libvpss.so", RTLD_GLOBAL | RTLD_LAZY);
+#else
     libcvi_bin_vpu = dlopen("libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+#endif
+
     if (!libcvi_bin_vpu)
     {
-        libcvi_bin_vpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
-    }
-    if (!libcvi_bin_vpu)
-    {
-        libcvi_bin_vpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+#ifdef DUO_SDK_V2   
+    libcvi_bin_vpu = dlopen("/mnt/system/lib/libvpss.so", RTLD_GLOBAL | RTLD_LAZY);
+#else
+    libcvi_bin_vpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+#endif        
     }
     if (!libcvi_bin_vpu)
     {
@@ -2546,10 +2538,6 @@ static int load_cvi_bin_library()
     if (!libcvi_bin)
     {
         libcvi_bin = dlopen("/mnt/system/lib/libcvi_bin.so", RTLD_LOCAL | RTLD_NOW);
-    }
-    if (!libcvi_bin)
-    {
-        libcvi_bin = dlopen("/mnt/system/usr/lib/libcvi_bin.so", RTLD_LOCAL | RTLD_NOW);
     }
     if (!libcvi_bin)
     {
@@ -2662,21 +2650,6 @@ static const struct sns_ini_cfg* get_sns_ini_cfg()
 
         return &duos;
     }
-    if (device_model == 5)
-    {
-        // licheerv nano new version
-        static const struct sns_ini_cfg lpirvnano = {
-            4,  // bus_id
-            29, // sns_i2c_addr
-            0,  // mipi_dev
-            {4, 3, 2, -1, -1},  // lane_id
-            {0, 0, 0, 0, 0},    // pn_swap
-            true,   // mclk_en
-            1       // mclk
-        };
-
-        return &lpirvnano;
-    }
 
     return NULL;
 }
@@ -2710,7 +2683,7 @@ static const struct sensor_cfg* get_sensor_cfg()
 
         return &gc2083;
     }
-    if (device_model == 3 || device_model == 5)
+    if (device_model == 3)
     {
         // licheerv nano
         // gc4653 info
@@ -3306,10 +3279,6 @@ int capture_cvi_impl::open(int width, int height, float fps)
             if (ret != CVI_SUCCESS)
             {
                 fprintf(stderr, "pfnSnsProbe failed %x\n", ret);
-                if (get_device_model() == 5)
-                {
-                    fprintf(stderr, "If you use an old version of licheerv-nano, run \"touch /boot/alpha\" and then \"reboot\"\n");
-                }
                 ret_val = -1;
                 goto OUT;
             }
@@ -3511,7 +3480,7 @@ int capture_cvi_impl::open(int width, int height, float fps)
     }
 
     // load bin
-    {
+       {
         CVI_CHAR binName[BIN_FILE_LENGTH] = { 0 };
         {
             CVI_S32 ret = CVI_BIN_GetBinName(binName);
@@ -3534,11 +3503,12 @@ int capture_cvi_impl::open(int width, int height, float fps)
 
             std::vector<unsigned char> buf;
             buf.resize(len);
-            fread((char*)buf.data(), 1, len, fp);
+            CVI_U32 readlen = fread((CVI_U8*)buf.data(), 1, len, fp);
 
             fclose(fp);
 
             {
+                fprintf(stderr, "CVI_BIN_ImportBinData start %d\n ", readlen); 
                 CVI_S32 ret = CVI_BIN_ImportBinData(buf.data(), buf.size());
                 if (ret != CVI_SUCCESS)
                 {
@@ -3553,7 +3523,9 @@ int capture_cvi_impl::open(int width, int height, float fps)
             fprintf(stderr, "fopen %s failed\n", (const char*)binName);
             fprintf(stderr, "fallback to default bindata\n");
         }
-    }
+    }    
+   
+    fprintf(stderr, "CVI_BIN_ImportBinData done"); 
 
     {
         VI_CHN_ATTR_S stChnAttr;
@@ -3578,6 +3550,8 @@ int capture_cvi_impl::open(int width, int height, float fps)
             goto OUT;
         }
     }
+
+    fprintf(stderr, "CVI_VI_SetChnAttr done");
 
     // prepare vpss
     {
@@ -3658,6 +3632,7 @@ int capture_cvi_impl::open(int width, int height, float fps)
             }
         }
 
+
         // vpss enable chn
         {
             CVI_S32 ret = CVI_VPSS_EnableChn(VpssGrp, VpssChn);
@@ -3684,6 +3659,8 @@ int capture_cvi_impl::open(int width, int height, float fps)
             b_vpss_vbpool_attached = 1;
         }
     }
+
+    fprintf(stderr, "capture_cvI_impl::open success");
 
     return 0;
 
@@ -3876,24 +3853,13 @@ int capture_cvi_impl::read_frame(unsigned char* bgrdata)
 
         for (int i = 0; i < h2; i++)
         {
-#if __riscv_vector_071
+#if __riscv_vector
             int j = 0;
             int n = w2;
             while (n > 0) {
                 size_t vl = vsetvl_e8m8(n);
                 vuint8m8_t bgr = vle8_v_u8m8(ptr + j, vl);
                 vse8_v_u8m8(bgrdata, bgr, vl);
-                bgrdata += vl;
-                j += vl;
-                n -= vl;
-            }
-#elif __riscv_vector
-            int j = 0;
-            int n = w2;
-            while (n > 0) {
-                size_t vl = __riscv_vsetvl_e8m8(n);
-                vuint8m8_t bgr = __riscv_vle8_v_u8m8(ptr + j, vl);
-                __riscv_vse8_v_u8m8(bgrdata, bgr, vl);
                 bgrdata += vl;
                 j += vl;
                 n -= vl;

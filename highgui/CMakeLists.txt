@@ -4,8 +4,6 @@ ocv_add_module(highgui opencv_imgproc)
 option(WITH_CVI "build with cvi" OFF)
 option(WITH_AW "build with aw" OFF)
 option(WITH_RK "build with rk" OFF)
-option(WITH_RPI "build with rpi" OFF)
-option(WITH_CIX "build with cix" OFF)
 
 set(highgui_srcs
     ${CMAKE_CURRENT_LIST_DIR}/src/exif.cpp
@@ -38,6 +36,11 @@ if(WITH_CVI)
   message(STATUS "highgui cvi enabled")
 endif()
 
+if(WITH_DUO_SDK_V2)
+  add_definitions(-DDUO_SDK_V2=1)
+  message(STATUS "milkv duo sdk v2 enabled")
+endif()
+
 if(WITH_AW)
   list(APPEND highgui_srcs
     ${CMAKE_CURRENT_LIST_DIR}/src/capture_v4l2_aw_isp.cpp
@@ -53,20 +56,6 @@ if(WITH_RK)
     ${CMAKE_CURRENT_LIST_DIR}/src/jpeg_encoder_rk_mpp.cpp)
   add_definitions(-DCV_WITH_RK=1)
   message(STATUS "highgui rk enabled")
-endif()
-
-if(WITH_RPI)
-  list(APPEND highgui_srcs
-    ${CMAKE_CURRENT_LIST_DIR}/src/jpeg_encoder_v4l_rpi.cpp)
-  add_definitions(-DCV_WITH_RPI=1)
-  message(STATUS "highgui rpi enabled")
-endif()
-
-if(WITH_CIX)
-  list(APPEND highgui_srcs
-    ${CMAKE_CURRENT_LIST_DIR}/src/jpeg_encoder_v4l_cix.cpp)
-  add_definitions(-DCV_WITH_CIX=1)
-  message(STATUS "highgui cix enabled")
 endif()
 
 file(GLOB highgui_ext_hdrs
