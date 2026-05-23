@@ -242,7 +242,7 @@ static int load_sys_library()
     libsys = dlopen("libsys.so", RTLD_LOCAL | RTLD_NOW);
     if (!libsys)
     {
-        libsys = dlopen("/mnt/system/lib/libsys.so", RTLD_LOCAL | RTLD_NOW);
+        libsys = dlopen("/mnt/system/usr/lib/libsys.so", RTLD_LOCAL | RTLD_NOW);
     }
     if (!libsys)
     {
@@ -643,7 +643,7 @@ static int load_vdec_library()
     libvdec_sys = dlopen("libsys.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvdec_sys)
     {
-        libvdec_sys = dlopen("/mnt/system/lib/libsys.so", RTLD_GLOBAL | RTLD_LAZY);
+        libvdec_sys = dlopen("/mnt/system/usr/lib/libsys.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvdec_sys)
     {
@@ -654,7 +654,7 @@ static int load_vdec_library()
     libvdec = dlopen("libvdec.so", RTLD_LOCAL | RTLD_NOW);
     if (!libvdec)
     {
-        libvdec = dlopen("/mnt/system/lib/libvdec.so", RTLD_LOCAL | RTLD_NOW);
+        libvdec = dlopen("/mnt/system/usr/lib/libvdec.so", RTLD_LOCAL | RTLD_NOW);
     }
     if (!libvdec)
     {
@@ -910,7 +910,7 @@ static int load_vpu_library()
     libvpu_awb = dlopen("libawb.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_awb)
     {
-        libvpu_awb = dlopen("/mnt/system/lib/libawb.so", RTLD_GLOBAL | RTLD_LAZY);
+        libvpu_awb = dlopen("/mnt/system/usr/lib/libawb.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_awb)
     {
@@ -921,7 +921,7 @@ static int load_vpu_library()
     libvpu_ae = dlopen("libae.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_ae)
     {
-        libvpu_ae = dlopen("/mnt/system/lib/libae.so", RTLD_GLOBAL | RTLD_LAZY);
+        libvpu_ae = dlopen("/mnt/system/usr/lib/libae.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_ae)
     {
@@ -932,7 +932,7 @@ static int load_vpu_library()
     libvpu_isp_algo = dlopen("libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_isp_algo)
     {
-        libvpu_isp_algo = dlopen("/mnt/system/lib/libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
+        libvpu_isp_algo = dlopen("/mnt/system/usr/lib/libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_isp_algo)
     {
@@ -943,7 +943,7 @@ static int load_vpu_library()
     libvpu_isp = dlopen("libisp.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_isp)
     {
-        libvpu_isp = dlopen("/mnt/system/lib/libisp.so", RTLD_GLOBAL | RTLD_LAZY);
+        libvpu_isp = dlopen("/mnt/system/usr/lib/libisp.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_isp)
     {
@@ -954,7 +954,7 @@ static int load_vpu_library()
     libvpu_cvi_bin_isp = dlopen("libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_cvi_bin_isp)
     {
-        libvpu_cvi_bin_isp = dlopen("/mnt/system/lib/libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
+        libvpu_cvi_bin_isp = dlopen("/mnt/system/usr/lib/libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_cvi_bin_isp)
     {
@@ -965,7 +965,7 @@ static int load_vpu_library()
     libvpu_cvi_bin = dlopen("libcvi_bin.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_cvi_bin)
     {
-        libvpu_cvi_bin = dlopen("/mnt/system/lib/libcvi_bin.so", RTLD_GLOBAL | RTLD_LAZY);
+        libvpu_cvi_bin = dlopen("/mnt/system/usr/lib/libcvi_bin.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_cvi_bin)
     {
@@ -977,7 +977,7 @@ static int load_vpu_library()
     libvpu = dlopen("libvpss.so", RTLD_LOCAL | RTLD_NOW);
     if (!libvpu)
     {
-        libvpu = dlopen("/mnt/system/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        libvpu = dlopen("/mnt/system/usr/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
     }
 #else
     libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
