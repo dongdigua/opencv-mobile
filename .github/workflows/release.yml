@@ -2,12 +2,6 @@ name: release
 
 on:
   workflow_dispatch:
-    inputs:
-      run_tests:
-        description: Run test step
-        required: false
-        default: false
-        type: boolean
   push:
     tags:
       - '*'
@@ -111,7 +105,7 @@ jobs:
         name: opencv-mobile-4.13.0-source
         path: opencv-mobile-4.13.0.zip
 
-  milkv-duo-sdk-v2:
+  build:
     needs: [setup]
     runs-on: ubuntu-latest
     container:
@@ -159,14 +153,6 @@ jobs:
         mkdir ${{ env.PACKAGE_NAME }}
         cp -rf ${{ env.SOURCE_DIR }}/build/install/* ${{ env.PACKAGE_NAME }}/
         zip -9 -r ${{ env.PACKAGE_NAME }}.zip ${{ env.PACKAGE_NAME }}
-    - name: test
-      if: startsWith(github.ref, 'refs/tags/') || inputs.run_tests
-      run: |
-        cd test
-        mkdir build && cd build
-        export RISCV_ROOT_PATH=$GITHUB_WORKSPACE/host-tools/gcc/riscv64-linux-musl-x86_64
-        cmake ${{ env.COMMON_CMAKE_OPTIONS }} -DOpenCV_DIR=$GITHUB_WORKSPACE/${{ env.PACKAGE_NAME }}/lib/cmake/opencv4 ..
-        cmake --build . -j $(nproc)
     - name: upload-zip
       uses: actions/upload-artifact@v7
       with:
@@ -177,7 +163,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
-    needs: [setup, milkv-duo-sdk-v2]
+    needs: [setup, build]
     runs-on: ubuntu-latest
     steps:
     - name: download

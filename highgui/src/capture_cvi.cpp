@@ -883,6 +883,7 @@ static void* libvpu_isp_algo = 0;
 static void* libvpu_isp = 0;
 static void* libvpu_cvi_bin_isp = 0;
 static void* libvpu_cvi_bin = 0;
+static void* libvpu_vo = 0;
 static void* libvpu = 0;
 static void* libvpu_vi = 0;
 
@@ -922,6 +923,12 @@ static PFN_CVI_VPSS_StopGrp CVI_VPSS_StopGrp = 0;
 
 static int unload_vpu_library()
 {
+    if (libvpu_vo)
+    {
+        dlclose(libvpu_vo);
+        libvpu_vo = 0;
+    }
+
     if (libvpu_sys)
     {
         dlclose(libvpu_sys);
@@ -1135,6 +1142,21 @@ static int load_vpu_library()
 
     if (duo_sdk_variant == 2)
     {
+        libvpu_vo = dlopen("libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        if (!libvpu_vo)
+        {
+            libvpu_vo = dlopen("/mnt/system/lib/libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libvpu_vo)
+        {
+            libvpu_vo = dlopen("/mnt/system/usr/lib/libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libvpu_vo)
+        {
+            fprintf(stderr, "%s\n", dlerror());
+            goto OUT;
+        }
+
         libvpu = dlopen("libvpss.so", RTLD_LOCAL | RTLD_NOW);
         if (!libvpu)
         {
