@@ -38,6 +38,11 @@ if(WITH_CVI)
   message(STATUS "highgui cvi enabled")
 endif()
 
+if(WITH_DUO_SDK_V2)
+  add_definitions(-DDUO_SDK_V2=1)
+  message(STATUS "milkv duo sdk v2 enabled")
+endif()
+
 if(WITH_AW)
   list(APPEND highgui_srcs
     ${CMAKE_CURRENT_LIST_DIR}/src/capture_v4l2_aw_isp.cpp

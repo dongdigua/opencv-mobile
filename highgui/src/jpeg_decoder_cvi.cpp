@@ -94,6 +94,23 @@ static bool is_device_whitelisted()
     return get_device_model() > 0;
 }
 
+static int get_duo_sdk_variant()
+{
+    static int duo_sdk_variant = -1;
+
+    if (duo_sdk_variant > 0)
+        return duo_sdk_variant;
+
+    duo_sdk_variant = 1;
+
+    if (access("/mnt/system/lib/libvpu.so", F_OK) != 0 && access("/mnt/system/usr/lib/libvpu.so", F_OK) != 0)
+    {
+        duo_sdk_variant = 2;
+    }
+
+    return duo_sdk_variant;
+}
+
 extern "C"
 {
 
@@ -1009,14 +1026,29 @@ static int load_vpu_library()
         goto OUT;
     }
 
-    libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
-    if (!libvpu)
+    if (get_duo_sdk_variant() == 2)
     {
-        libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        libvpu = dlopen("libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        }
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/usr/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        }
     }
-    if (!libvpu)
+    else
     {
-        libvpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        }
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        }
     }
     if (!libvpu)
     {

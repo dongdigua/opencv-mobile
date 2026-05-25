@@ -104,6 +104,23 @@ static bool is_device_whitelisted()
     return get_device_model() > 0;
 }
 
+static int get_duo_sdk_variant()
+{
+    static int duo_sdk_variant = -1;
+
+    if (duo_sdk_variant > 0)
+        return duo_sdk_variant;
+
+    duo_sdk_variant = 1;
+
+    if (access("/mnt/system/lib/libvpu.so", F_OK) != 0 && access("/mnt/system/usr/lib/libvpu.so", F_OK) != 0)
+    {
+        duo_sdk_variant = 2;
+    }
+
+    return duo_sdk_variant;
+}
+
 extern "C"
 {
 
@@ -483,7 +500,7 @@ typedef enum _BAYER_FORMAT_E {
 } BAYER_FORMAT_E;
 
 #define VI_MAX_ADCHN_NUM (4UL)
-typedef struct _VI_DEV_ATTR_S {
+typedef struct _VI_DEV_ATTR_V1_S {
     VI_INTF_MODE_E enIntfMode; /* RW;Interface mode */
     VI_WORK_MODE_E enWorkMode; /* RW;Work mode */
 
@@ -511,7 +528,38 @@ typedef struct _VI_DEV_ATTR_S {
     CVI_U32 switchGpioPin; /*switch pin*/
 
     CVI_U8 switchGPioPol; /*switch pol*/
-} VI_DEV_ATTR_S;
+} VI_DEV_ATTR_V1_S;
+
+typedef struct _VI_DEV_ATTR_V2_S {
+    VI_INTF_MODE_E enIntfMode;
+    VI_WORK_MODE_E enWorkMode;
+
+    VI_SCAN_MODE_E enScanMode;
+    CVI_S32 as32AdChnId[VI_MAX_ADCHN_NUM];
+
+    VI_YUV_DATA_SEQ_E enDataSeq;
+    VI_SYNC_CFG_S stSynCfg;
+
+    VI_DATA_TYPE_E enInputDataType;
+
+    SIZE_S stSize;
+
+    VI_WDR_ATTR_S stWDRAttr;
+
+    BAYER_FORMAT_E enBayerFormat;
+
+    CVI_U32 chn_num;
+
+    CVI_U32 snrFps;
+
+    CVI_BOOL isMux;
+
+    CVI_U32 switchGpioPin;
+
+    CVI_U8 switchGPioPol;
+
+    CVI_BOOL disEnableSbm; /* V2: Sns timing support SBM or not */
+} VI_DEV_ATTR_V2_S;
 
 typedef enum _VI_PIPE_BYPASS_MODE_E {
     VI_PIPE_BYPASS_NONE,
@@ -708,7 +756,7 @@ typedef struct _VIDEO_FRAME_INFO_S {
     CVI_U32 u32PoolId;
 } VIDEO_FRAME_INFO_S;
 
-typedef CVI_S32 (*PFN_CVI_VI_SetDevAttr)(VI_DEV ViDev, const VI_DEV_ATTR_S *pstDevAttr);
+typedef CVI_S32 (*PFN_CVI_VI_SetDevAttr)(VI_DEV ViDev, const void* pstDevAttr);
 typedef CVI_S32 (*PFN_CVI_VI_EnableDev)(VI_DEV ViDev);
 typedef CVI_S32 (*PFN_CVI_VI_DisableDev)(VI_DEV ViDev);
 typedef CVI_S32 (*PFN_CVI_VI_CreatePipe)(VI_PIPE ViPipe, const VI_PIPE_ATTR_S *pstPipeAttr);
@@ -836,6 +884,7 @@ static void* libvpu_isp = 0;
 static void* libvpu_cvi_bin_isp = 0;
 static void* libvpu_cvi_bin = 0;
 static void* libvpu = 0;
+static void* libvpu_vi = 0;
 
 static PFN_CVI_VI_SetDevAttr CVI_VI_SetDevAttr = 0;
 static PFN_CVI_VI_EnableDev CVI_VI_EnableDev = 0;
@@ -921,6 +970,12 @@ static int unload_vpu_library()
         libvpu = 0;
     }
 
+    if (libvpu_vi)
+    {
+        dlclose(libvpu_vi);
+        libvpu_vi = 0;
+    }
+
     CVI_VI_SetDevAttr = 0;
     CVI_VI_EnableDev = 0;
     CVI_VI_DisableDev = 0;
@@ -962,6 +1017,9 @@ static int load_vpu_library()
 {
     if (libvpu)
         return 0;
+
+    const int duo_sdk_variant = get_duo_sdk_variant();
+    void* libvi = 0;
 
     // check device whitelist
     bool whitelisted = is_device_whitelisted();
@@ -1075,14 +1133,29 @@ static int load_vpu_library()
         goto OUT;
     }
 
-    libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
-    if (!libvpu)
+    if (duo_sdk_variant == 2)
     {
-        libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        libvpu = dlopen("libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        }
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/usr/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        }
     }
-    if (!libvpu)
+    else
     {
-        libvpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        }
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        }
     }
     if (!libvpu)
     {
@@ -1090,22 +1163,42 @@ static int load_vpu_library()
         goto OUT;
     }
 
-    CVI_VI_SetDevAttr = (PFN_CVI_VI_SetDevAttr)dlsym(libvpu, "CVI_VI_SetDevAttr");
-    CVI_VI_EnableDev = (PFN_CVI_VI_EnableDev)dlsym(libvpu, "CVI_VI_EnableDev");
-    CVI_VI_DisableDev = (PFN_CVI_VI_DisableDev)dlsym(libvpu, "CVI_VI_DisableDev");
-    CVI_VI_CreatePipe = (PFN_CVI_VI_CreatePipe)dlsym(libvpu, "CVI_VI_CreatePipe");
-    CVI_VI_DestroyPipe = (PFN_CVI_VI_DestroyPipe)dlsym(libvpu, "CVI_VI_DestroyPipe");
-    CVI_VI_SetPipeAttr = (PFN_CVI_VI_SetPipeAttr)dlsym(libvpu, "CVI_VI_SetPipeAttr");
-    CVI_VI_StartPipe = (PFN_CVI_VI_StartPipe)dlsym(libvpu, "CVI_VI_StartPipe");
-    CVI_VI_StopPipe = (PFN_CVI_VI_StopPipe)dlsym(libvpu, "CVI_VI_StopPipe");
-    CVI_VI_AttachVbPool = (PFN_CVI_VI_AttachVbPool)dlsym(libvpu, "CVI_VI_AttachVbPool");
-    CVI_VI_DetachVbPool = (PFN_CVI_VI_DetachVbPool)dlsym(libvpu, "CVI_VI_DetachVbPool");
-    CVI_VI_SetChnAttr = (PFN_CVI_VI_SetChnAttr)dlsym(libvpu, "CVI_VI_SetChnAttr");
-    CVI_VI_EnableChn = (PFN_CVI_VI_EnableChn)dlsym(libvpu, "CVI_VI_EnableChn");
-    CVI_VI_DisableChn = (PFN_CVI_VI_DisableChn)dlsym(libvpu, "CVI_VI_DisableChn");
-    CVI_VI_SetChnCrop = (PFN_CVI_VI_SetChnCrop)dlsym(libvpu, "CVI_VI_SetChnCrop");
-    CVI_VI_GetChnFrame = (PFN_CVI_VI_GetChnFrame)dlsym(libvpu, "CVI_VI_GetChnFrame");
-    CVI_VI_ReleaseChnFrame = (PFN_CVI_VI_ReleaseChnFrame)dlsym(libvpu, "CVI_VI_ReleaseChnFrame");
+    if (duo_sdk_variant == 2)
+    {
+        libvpu_vi = dlopen("libvi.so", RTLD_GLOBAL | RTLD_LAZY);
+        if (!libvpu_vi)
+        {
+            libvpu_vi = dlopen("/mnt/system/lib/libvi.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libvpu_vi)
+        {
+            libvpu_vi = dlopen("/mnt/system/usr/lib/libvi.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libvpu_vi)
+        {
+            fprintf(stderr, "%s\n", dlerror());
+            goto OUT;
+        }
+    }
+
+    libvi = duo_sdk_variant == 2 ? libvpu_vi : libvpu;
+
+    CVI_VI_SetDevAttr = (PFN_CVI_VI_SetDevAttr)dlsym(libvi, "CVI_VI_SetDevAttr");
+    CVI_VI_EnableDev = (PFN_CVI_VI_EnableDev)dlsym(libvi, "CVI_VI_EnableDev");
+    CVI_VI_DisableDev = (PFN_CVI_VI_DisableDev)dlsym(libvi, "CVI_VI_DisableDev");
+    CVI_VI_CreatePipe = (PFN_CVI_VI_CreatePipe)dlsym(libvi, "CVI_VI_CreatePipe");
+    CVI_VI_DestroyPipe = (PFN_CVI_VI_DestroyPipe)dlsym(libvi, "CVI_VI_DestroyPipe");
+    CVI_VI_SetPipeAttr = (PFN_CVI_VI_SetPipeAttr)dlsym(libvi, "CVI_VI_SetPipeAttr");
+    CVI_VI_StartPipe = (PFN_CVI_VI_StartPipe)dlsym(libvi, "CVI_VI_StartPipe");
+    CVI_VI_StopPipe = (PFN_CVI_VI_StopPipe)dlsym(libvi, "CVI_VI_StopPipe");
+    CVI_VI_AttachVbPool = (PFN_CVI_VI_AttachVbPool)dlsym(libvi, "CVI_VI_AttachVbPool");
+    CVI_VI_DetachVbPool = (PFN_CVI_VI_DetachVbPool)dlsym(libvi, "CVI_VI_DetachVbPool");
+    CVI_VI_SetChnAttr = (PFN_CVI_VI_SetChnAttr)dlsym(libvi, "CVI_VI_SetChnAttr");
+    CVI_VI_EnableChn = (PFN_CVI_VI_EnableChn)dlsym(libvi, "CVI_VI_EnableChn");
+    CVI_VI_DisableChn = (PFN_CVI_VI_DisableChn)dlsym(libvi, "CVI_VI_DisableChn");
+    CVI_VI_SetChnCrop = (PFN_CVI_VI_SetChnCrop)dlsym(libvi, "CVI_VI_SetChnCrop");
+    CVI_VI_GetChnFrame = (PFN_CVI_VI_GetChnFrame)dlsym(libvi, "CVI_VI_GetChnFrame");
+    CVI_VI_ReleaseChnFrame = (PFN_CVI_VI_ReleaseChnFrame)dlsym(libvi, "CVI_VI_ReleaseChnFrame");
 
     CVI_VPSS_AttachVbPool = (PFN_CVI_VPSS_AttachVbPool)dlsym(libvpu, "CVI_VPSS_AttachVbPool");
     CVI_VPSS_CreateGrp = (PFN_CVI_VPSS_CreateGrp)dlsym(libvpu, "CVI_VPSS_CreateGrp");
@@ -1776,7 +1869,7 @@ typedef struct _AE_SENSOR_EXP_FUNC_S {
     CVI_S32 (*pfn_cmos_ae_fswdr_attr_set)(VI_PIPE ViPipe, AE_FSWDR_ATTR_S *pstAeFSWDRAttr);
 } AE_SENSOR_EXP_FUNC_S;
 
-typedef struct _ISP_SNS_OBJ_S {
+typedef struct _ISP_SNS_OBJ_V1_S {
     CVI_S32 (*pfnRegisterCallback)(VI_PIPE ViPipe, ALG_LIB_S *, ALG_LIB_S *);
     CVI_S32 (*pfnUnRegisterCallback)(VI_PIPE ViPipe, ALG_LIB_S *, ALG_LIB_S *);
     CVI_S32 (*pfnSetBusInfo)(VI_PIPE ViPipe, ISP_SNS_COMMBUS_U unSNSBusInfo);
@@ -1792,7 +1885,39 @@ typedef struct _ISP_SNS_OBJ_S {
     CVI_S32 (*pfnExpSensorCb)(ISP_SENSOR_EXP_FUNC_S *);
     CVI_S32 (*pfnExpAeCb)(AE_SENSOR_EXP_FUNC_S *);
     CVI_S32 (*pfnSnsProbe)(VI_PIPE ViPipe);
-} ISP_SNS_OBJ_S;
+} ISP_SNS_OBJ_V1_S;
+
+typedef struct _ISP_SNS_OBJ_V2_S {
+    CVI_S32 (*pfnRegisterCallback)(VI_PIPE ViPipe, ALG_LIB_S *, ALG_LIB_S *);
+    CVI_S32 (*pfnUnRegisterCallback)(VI_PIPE ViPipe, ALG_LIB_S *, ALG_LIB_S *);
+    CVI_S32 (*pfnSetBusInfo)(VI_PIPE ViPipe, ISP_SNS_COMMBUS_U unSNSBusInfo);
+    CVI_VOID (*pfnStandby)(VI_PIPE ViPipe);
+    CVI_VOID (*pfnRestart)(VI_PIPE ViPipe);
+    CVI_VOID (*pfnMirrorFlip)(VI_PIPE ViPipe, ISP_SNS_MIRRORFLIP_TYPE_E eSnsMirrorFlip);
+    CVI_S32 (*pfnWriteReg)(VI_PIPE ViPipe, CVI_S32 s32Addr, CVI_S32 s32Data);
+    CVI_S32 (*pfnReadReg)(VI_PIPE ViPipe, CVI_S32 s32Addr);
+    CVI_S32 (*pfnSetInit)(VI_PIPE ViPipe, ISP_INIT_ATTR_S *);
+    CVI_S32 (*pfnPatchRxAttr)(RX_INIT_ATTR_S *);
+    CVI_VOID (*pfnPatchI2cAddr)(CVI_S32 s32I2cAddr);
+    CVI_S32 (*pfnGetRxAttr)(VI_PIPE ViPipe, SNS_COMBO_DEV_ATTR_S *);
+    CVI_S32 (*pfnExpSensorCb)(ISP_SENSOR_EXP_FUNC_S *);
+    CVI_VOID (*pfnSetSensorSlave)(VI_PIPE ViPipe); /* V2 */
+    CVI_S32 (*pfnExpAeCb)(AE_SENSOR_EXP_FUNC_S *);
+    CVI_S32 (*pfnSnsProbe)(VI_PIPE ViPipe);
+} ISP_SNS_OBJ_V2_S;
+
+typedef struct _ISP_SNS_OBJ_RUNTIME_S {
+    CVI_S32 (*pfnRegisterCallback)(VI_PIPE ViPipe, ALG_LIB_S *, ALG_LIB_S *);
+    CVI_S32 (*pfnUnRegisterCallback)(VI_PIPE ViPipe, ALG_LIB_S *, ALG_LIB_S *);
+    CVI_S32 (*pfnSetBusInfo)(VI_PIPE ViPipe, ISP_SNS_COMMBUS_U unSNSBusInfo);
+    CVI_VOID (*pfnStandby)(VI_PIPE ViPipe);
+    CVI_S32 (*pfnSetInit)(VI_PIPE ViPipe, ISP_INIT_ATTR_S *);
+    CVI_S32 (*pfnPatchRxAttr)(RX_INIT_ATTR_S *);
+    CVI_VOID (*pfnPatchI2cAddr)(CVI_S32 s32I2cAddr);
+    CVI_S32 (*pfnGetRxAttr)(VI_PIPE ViPipe, SNS_COMBO_DEV_ATTR_S *);
+    CVI_S32 (*pfnExpSensorCb)(ISP_SENSOR_EXP_FUNC_S *);
+    CVI_S32 (*pfnSnsProbe)(VI_PIPE ViPipe);
+} ISP_SNS_OBJ_RUNTIME_S;
 
 }
 
@@ -1802,7 +1927,50 @@ static void* libsns_obj_awb = 0;
 static void* libsns_obj_isp = 0;
 static void* libsns_obj = 0;
 
-static ISP_SNS_OBJ_S* pstSnsObj = 0;
+static ISP_SNS_OBJ_RUNTIME_S sns_obj_runtime;
+static ISP_SNS_OBJ_RUNTIME_S* pstSnsObj = 0;
+
+static void init_sns_obj_runtime(const void* raw_sns_obj)
+{
+    memset(&sns_obj_runtime, 0, sizeof(sns_obj_runtime));
+
+    if (!raw_sns_obj)
+    {
+        pstSnsObj = 0;
+        return;
+    }
+
+    if (get_duo_sdk_variant() == 2)
+    {
+        const ISP_SNS_OBJ_V2_S* sns_obj_v2 = (const ISP_SNS_OBJ_V2_S*)raw_sns_obj;
+        sns_obj_runtime.pfnRegisterCallback = sns_obj_v2->pfnRegisterCallback;
+        sns_obj_runtime.pfnUnRegisterCallback = sns_obj_v2->pfnUnRegisterCallback;
+        sns_obj_runtime.pfnSetBusInfo = sns_obj_v2->pfnSetBusInfo;
+        sns_obj_runtime.pfnStandby = sns_obj_v2->pfnStandby;
+        sns_obj_runtime.pfnSetInit = sns_obj_v2->pfnSetInit;
+        sns_obj_runtime.pfnPatchRxAttr = sns_obj_v2->pfnPatchRxAttr;
+        sns_obj_runtime.pfnPatchI2cAddr = sns_obj_v2->pfnPatchI2cAddr;
+        sns_obj_runtime.pfnGetRxAttr = sns_obj_v2->pfnGetRxAttr;
+        sns_obj_runtime.pfnExpSensorCb = sns_obj_v2->pfnExpSensorCb;
+        sns_obj_runtime.pfnSnsProbe = sns_obj_v2->pfnSnsProbe;
+    }
+    else
+    {
+        const ISP_SNS_OBJ_V1_S* sns_obj_v1 = (const ISP_SNS_OBJ_V1_S*)raw_sns_obj;
+        sns_obj_runtime.pfnRegisterCallback = sns_obj_v1->pfnRegisterCallback;
+        sns_obj_runtime.pfnUnRegisterCallback = sns_obj_v1->pfnUnRegisterCallback;
+        sns_obj_runtime.pfnSetBusInfo = sns_obj_v1->pfnSetBusInfo;
+        sns_obj_runtime.pfnStandby = sns_obj_v1->pfnStandby;
+        sns_obj_runtime.pfnSetInit = sns_obj_v1->pfnSetInit;
+        sns_obj_runtime.pfnPatchRxAttr = sns_obj_v1->pfnPatchRxAttr;
+        sns_obj_runtime.pfnPatchI2cAddr = sns_obj_v1->pfnPatchI2cAddr;
+        sns_obj_runtime.pfnGetRxAttr = sns_obj_v1->pfnGetRxAttr;
+        sns_obj_runtime.pfnExpSensorCb = sns_obj_v1->pfnExpSensorCb;
+        sns_obj_runtime.pfnSnsProbe = sns_obj_v1->pfnSnsProbe;
+    }
+
+    pstSnsObj = &sns_obj_runtime;
+}
 
 static int unload_sns_obj_library()
 {
@@ -1836,6 +2004,7 @@ static int unload_sns_obj_library()
         libsns_obj = 0;
     }
 
+    memset(&sns_obj_runtime, 0, sizeof(sns_obj_runtime));
     pstSnsObj = 0;
 
     return 0;
@@ -1933,7 +2102,7 @@ static int load_sns_obj_library()
             goto OUT;
         }
 
-        pstSnsObj = (ISP_SNS_OBJ_S*)dlsym(libsns_obj, "stSnsGc2083_Obj");
+        init_sns_obj_runtime(dlsym(libsns_obj, "stSnsGc2083_Obj"));
     }
     else if (device_model == 3)
     {
@@ -1953,7 +2122,7 @@ static int load_sns_obj_library()
             goto OUT;
         }
 
-        pstSnsObj = (ISP_SNS_OBJ_S*)dlsym(libsns_obj, "stSnsGc4653_Obj");
+        init_sns_obj_runtime(dlsym(libsns_obj, "stSnsGc4653_Obj"));
     }
     else
     {
@@ -2527,14 +2696,29 @@ static int load_cvi_bin_library()
         goto OUT;
     }
 
-    libcvi_bin_vpu = dlopen("libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
-    if (!libcvi_bin_vpu)
+    if (get_duo_sdk_variant() == 2)
     {
-        libcvi_bin_vpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+        libcvi_bin_vpu = dlopen("libvpss.so", RTLD_GLOBAL | RTLD_LAZY);
+        if (!libcvi_bin_vpu)
+        {
+            libcvi_bin_vpu = dlopen("/mnt/system/lib/libvpss.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libcvi_bin_vpu)
+        {
+            libcvi_bin_vpu = dlopen("/mnt/system/usr/lib/libvpss.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
     }
-    if (!libcvi_bin_vpu)
+    else
     {
-        libcvi_bin_vpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+        libcvi_bin_vpu = dlopen("libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+        if (!libcvi_bin_vpu)
+        {
+            libcvi_bin_vpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libcvi_bin_vpu)
+        {
+            libcvi_bin_vpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
     }
     if (!libcvi_bin_vpu)
     {
@@ -3179,47 +3363,96 @@ int capture_cvi_impl::open(int width, int height, float fps)
 
     // prepare vi
     {
-        VI_DEV_ATTR_S stViDevAttr;
-        memset(&stViDevAttr, 0, sizeof(stViDevAttr));
-        stViDevAttr.enIntfMode = VI_MODE_MIPI;
-        stViDevAttr.enWorkMode = VI_WORK_MODE_1Multiplex;
-        stViDevAttr.enScanMode = VI_SCAN_PROGRESSIVE;
-        stViDevAttr.as32AdChnId[0] = -1;
-        stViDevAttr.as32AdChnId[1] = -1;
-        stViDevAttr.as32AdChnId[2] = -1;
-        stViDevAttr.as32AdChnId[3] = -1;
-        stViDevAttr.enDataSeq = VI_DATA_SEQ_YUYV;
-        stViDevAttr.stSynCfg.enVsync = VI_VSYNC_PULSE;
-        stViDevAttr.stSynCfg.enVsyncNeg = VI_VSYNC_NEG_LOW;
-        stViDevAttr.stSynCfg.enHsync = VI_HSYNC_VALID_SINGNAL;
-        stViDevAttr.stSynCfg.enHsyncNeg = VI_HSYNC_NEG_HIGH;
-        stViDevAttr.stSynCfg.enVsyncValid = VI_VSYNC_VALID_SIGNAL;
-        stViDevAttr.stSynCfg.enVsyncValidNeg = VI_VSYNC_VALID_NEG_HIGH;
-        stViDevAttr.stSynCfg.stTimingBlank.u32HsyncHfb = 0;
-        stViDevAttr.stSynCfg.stTimingBlank.u32HsyncAct = cap_width;
-        stViDevAttr.stSynCfg.stTimingBlank.u32HsyncHbb = 0;
-        stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVfb = 0;
-        stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVact = cap_height;
-        stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbb = 0;
-        stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbfb = 0;
-        stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbact = 0;
-        stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbbb = 0;
-        stViDevAttr.enInputDataType = VI_DATA_TYPE_RGB;
-        stViDevAttr.stSize.u32Width = cap_width;
-        stViDevAttr.stSize.u32Height = cap_height;
-        stViDevAttr.stWDRAttr.enWDRMode = cap_wdr_mode;
-        stViDevAttr.stWDRAttr.u32CacheLine = cap_height;
-        stViDevAttr.stWDRAttr.bSyntheticWDR = 0;
-        stViDevAttr.enBayerFormat = cap_bayer_format;
-        stViDevAttr.chn_num = 0;// FIXME
-        stViDevAttr.snrFps = cap_fps;
-
-        CVI_S32 ret = CVI_VI_SetDevAttr(ViDev, &stViDevAttr);
-        if (ret != CVI_SUCCESS)
+        if (get_duo_sdk_variant() == 2)
         {
-            fprintf(stderr, "CVI_VI_SetDevAttr failed %x\n", ret);
-            ret_val = -1;
-            goto OUT;
+            VI_DEV_ATTR_V2_S stViDevAttr;
+            memset(&stViDevAttr, 0, sizeof(stViDevAttr));
+            stViDevAttr.enIntfMode = VI_MODE_MIPI;
+            stViDevAttr.enWorkMode = VI_WORK_MODE_1Multiplex;
+            stViDevAttr.enScanMode = VI_SCAN_PROGRESSIVE;
+            stViDevAttr.as32AdChnId[0] = -1;
+            stViDevAttr.as32AdChnId[1] = -1;
+            stViDevAttr.as32AdChnId[2] = -1;
+            stViDevAttr.as32AdChnId[3] = -1;
+            stViDevAttr.enDataSeq = VI_DATA_SEQ_YUYV;
+            stViDevAttr.stSynCfg.enVsync = VI_VSYNC_PULSE;
+            stViDevAttr.stSynCfg.enVsyncNeg = VI_VSYNC_NEG_LOW;
+            stViDevAttr.stSynCfg.enHsync = VI_HSYNC_VALID_SINGNAL;
+            stViDevAttr.stSynCfg.enHsyncNeg = VI_HSYNC_NEG_HIGH;
+            stViDevAttr.stSynCfg.enVsyncValid = VI_VSYNC_VALID_SIGNAL;
+            stViDevAttr.stSynCfg.enVsyncValidNeg = VI_VSYNC_VALID_NEG_HIGH;
+            stViDevAttr.stSynCfg.stTimingBlank.u32HsyncHfb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32HsyncAct = cap_width;
+            stViDevAttr.stSynCfg.stTimingBlank.u32HsyncHbb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVfb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVact = cap_height;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbfb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbact = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbbb = 0;
+            stViDevAttr.enInputDataType = VI_DATA_TYPE_RGB;
+            stViDevAttr.stSize.u32Width = cap_width;
+            stViDevAttr.stSize.u32Height = cap_height;
+            stViDevAttr.stWDRAttr.enWDRMode = cap_wdr_mode;
+            stViDevAttr.stWDRAttr.u32CacheLine = cap_height;
+            stViDevAttr.stWDRAttr.bSyntheticWDR = 0;
+            stViDevAttr.enBayerFormat = cap_bayer_format;
+            stViDevAttr.chn_num = 0;// FIXME
+            stViDevAttr.snrFps = cap_fps;
+            stViDevAttr.disEnableSbm = CVI_FALSE;
+
+            CVI_S32 ret = CVI_VI_SetDevAttr(ViDev, &stViDevAttr);
+            if (ret != CVI_SUCCESS)
+            {
+                fprintf(stderr, "CVI_VI_SetDevAttr failed %x\n", ret);
+                ret_val = -1;
+                goto OUT;
+            }
+        }
+        else
+        {
+            VI_DEV_ATTR_V1_S stViDevAttr;
+            memset(&stViDevAttr, 0, sizeof(stViDevAttr));
+            stViDevAttr.enIntfMode = VI_MODE_MIPI;
+            stViDevAttr.enWorkMode = VI_WORK_MODE_1Multiplex;
+            stViDevAttr.enScanMode = VI_SCAN_PROGRESSIVE;
+            stViDevAttr.as32AdChnId[0] = -1;
+            stViDevAttr.as32AdChnId[1] = -1;
+            stViDevAttr.as32AdChnId[2] = -1;
+            stViDevAttr.as32AdChnId[3] = -1;
+            stViDevAttr.enDataSeq = VI_DATA_SEQ_YUYV;
+            stViDevAttr.stSynCfg.enVsync = VI_VSYNC_PULSE;
+            stViDevAttr.stSynCfg.enVsyncNeg = VI_VSYNC_NEG_LOW;
+            stViDevAttr.stSynCfg.enHsync = VI_HSYNC_VALID_SINGNAL;
+            stViDevAttr.stSynCfg.enHsyncNeg = VI_HSYNC_NEG_HIGH;
+            stViDevAttr.stSynCfg.enVsyncValid = VI_VSYNC_VALID_SIGNAL;
+            stViDevAttr.stSynCfg.enVsyncValidNeg = VI_VSYNC_VALID_NEG_HIGH;
+            stViDevAttr.stSynCfg.stTimingBlank.u32HsyncHfb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32HsyncAct = cap_width;
+            stViDevAttr.stSynCfg.stTimingBlank.u32HsyncHbb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVfb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVact = cap_height;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbfb = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbact = 0;
+            stViDevAttr.stSynCfg.stTimingBlank.u32VsyncVbbb = 0;
+            stViDevAttr.enInputDataType = VI_DATA_TYPE_RGB;
+            stViDevAttr.stSize.u32Width = cap_width;
+            stViDevAttr.stSize.u32Height = cap_height;
+            stViDevAttr.stWDRAttr.enWDRMode = cap_wdr_mode;
+            stViDevAttr.stWDRAttr.u32CacheLine = cap_height;
+            stViDevAttr.stWDRAttr.bSyntheticWDR = 0;
+            stViDevAttr.enBayerFormat = cap_bayer_format;
+            stViDevAttr.chn_num = 0;// FIXME
+            stViDevAttr.snrFps = cap_fps;
+
+            CVI_S32 ret = CVI_VI_SetDevAttr(ViDev, &stViDevAttr);
+            if (ret != CVI_SUCCESS)
+            {
+                fprintf(stderr, "CVI_VI_SetDevAttr failed %x\n", ret);
+                ret_val = -1;
+                goto OUT;
+            }
         }
     }
 
