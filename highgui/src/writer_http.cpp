@@ -314,8 +314,11 @@ void writer_http_impl::mainloop()
         // handle client
         while (1)
         {
-            char buf[1024 * 1024];
-            client.recv(buf, 1024 * 1024 - 1);
+            char buf[4096] = {0};
+            client.recv(buf, sizeof(buf) - 1);
+
+            if (!client.valid())
+                break;
 
             // fprintf(stderr, "%s", buf);
             // fprintf(stderr, "-------------------------\n");
