@@ -317,9 +317,6 @@ void writer_http_impl::mainloop()
             char buf[4096] = {0};
             client.recv(buf, sizeof(buf) - 1);
 
-            if (!client.valid())
-                break;
-
             // fprintf(stderr, "%s", buf);
             // fprintf(stderr, "-------------------------\n");
 
