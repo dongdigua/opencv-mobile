@@ -151,7 +151,7 @@ jobs:
             `cat ../options.txt` -DBUILD_opencv_world=OFF -DOPENCV_DISABLE_FILESYSTEM_SUPPORT=ON \
             -DWITH_OPENMP=OFF -DOPENCV_DISABLE_THREAD_SUPPORT=ON \
             -DWITH_CVI=ON -DWITH_DUO_SDK_V2=ON -DWITH_HAL_RVV=OFF \
-            -DOPENCV_EXTRA_FLAGS="-D__riscv_vector_071 -mrvv-vector-bits=128" ..
+            -DOPENCV_EXTRA_FLAGS="-ggdb -D__riscv_vector_071 -mrvv-vector-bits=128" ..
         cmake --build . -j $(nproc)
         cmake --build . --target install
     - name: package

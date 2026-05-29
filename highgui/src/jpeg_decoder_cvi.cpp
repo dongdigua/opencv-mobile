@@ -36,7 +36,7 @@
 
 #include "exif.hpp"
 
-namespace cv {   
+namespace cv {
 
 // 0 = unknown
 // 1 = milkv-duo
@@ -92,6 +92,23 @@ static int get_device_model()
 static bool is_device_whitelisted()
 {
     return get_device_model() > 0;
+}
+
+static int get_duo_sdk_variant()
+{
+    static int duo_sdk_variant = -1;
+
+    if (duo_sdk_variant > 0)
+        return duo_sdk_variant;
+
+    duo_sdk_variant = 1;
+
+    if (access("/mnt/system/lib/libvpu.so", F_OK) != 0 && access("/mnt/system/usr/lib/libvpu.so", F_OK) != 0)
+    {
+        duo_sdk_variant = 2;
+    }
+
+    return duo_sdk_variant;
 }
 
 extern "C"
@@ -240,6 +257,10 @@ static int load_sys_library()
     }
 
     libsys = dlopen("libsys.so", RTLD_LOCAL | RTLD_NOW);
+    if (!libsys)
+    {
+        libsys = dlopen("/mnt/system/lib/libsys.so", RTLD_LOCAL | RTLD_NOW);
+    }
     if (!libsys)
     {
         libsys = dlopen("/mnt/system/usr/lib/libsys.so", RTLD_LOCAL | RTLD_NOW);
@@ -643,6 +664,10 @@ static int load_vdec_library()
     libvdec_sys = dlopen("libsys.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvdec_sys)
     {
+        libvdec_sys = dlopen("/mnt/system/lib/libsys.so", RTLD_GLOBAL | RTLD_LAZY);
+    }
+    if (!libvdec_sys)
+    {
         libvdec_sys = dlopen("/mnt/system/usr/lib/libsys.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvdec_sys)
@@ -652,6 +677,10 @@ static int load_vdec_library()
     }
 
     libvdec = dlopen("libvdec.so", RTLD_LOCAL | RTLD_NOW);
+    if (!libvdec)
+    {
+        libvdec = dlopen("/mnt/system/lib/libvdec.so", RTLD_LOCAL | RTLD_NOW);
+    }
     if (!libvdec)
     {
         libvdec = dlopen("/mnt/system/usr/lib/libvdec.so", RTLD_LOCAL | RTLD_NOW);
@@ -814,6 +843,7 @@ static void* libvpu_isp_algo = 0;
 static void* libvpu_isp = 0;
 static void* libvpu_cvi_bin_isp = 0;
 static void* libvpu_cvi_bin = 0;
+static void* libvpu_vo = 0;
 static void* libvpu = 0;
 
 static PFN_CVI_VPSS_AttachVbPool CVI_VPSS_AttachVbPool = 0;
@@ -834,6 +864,12 @@ static PFN_CVI_VPSS_StopGrp CVI_VPSS_StopGrp = 0;
 
 static int unload_vpu_library()
 {
+    if (libvpu_vo)
+    {
+        dlclose(libvpu_vo);
+        libvpu_vo = 0;
+    }
+
     if (libvpu_awb)
     {
         dlclose(libvpu_awb);
@@ -910,6 +946,10 @@ static int load_vpu_library()
     libvpu_awb = dlopen("libawb.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_awb)
     {
+        libvpu_awb = dlopen("/mnt/system/lib/libawb.so", RTLD_GLOBAL | RTLD_LAZY);
+    }
+    if (!libvpu_awb)
+    {
         libvpu_awb = dlopen("/mnt/system/usr/lib/libawb.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_awb)
@@ -919,6 +959,10 @@ static int load_vpu_library()
     }
 
     libvpu_ae = dlopen("libae.so", RTLD_GLOBAL | RTLD_LAZY);
+    if (!libvpu_ae)
+    {
+        libvpu_ae = dlopen("/mnt/system/lib/libae.so", RTLD_GLOBAL | RTLD_LAZY);
+    }
     if (!libvpu_ae)
     {
         libvpu_ae = dlopen("/mnt/system/usr/lib/libae.so", RTLD_GLOBAL | RTLD_LAZY);
@@ -932,6 +976,10 @@ static int load_vpu_library()
     libvpu_isp_algo = dlopen("libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_isp_algo)
     {
+        libvpu_isp_algo = dlopen("/mnt/system/lib/libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
+    }
+    if (!libvpu_isp_algo)
+    {
         libvpu_isp_algo = dlopen("/mnt/system/usr/lib/libisp_algo.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_isp_algo)
@@ -941,6 +989,10 @@ static int load_vpu_library()
     }
 
     libvpu_isp = dlopen("libisp.so", RTLD_GLOBAL | RTLD_LAZY);
+    if (!libvpu_isp)
+    {
+        libvpu_isp = dlopen("/mnt/system/lib/libisp.so", RTLD_GLOBAL | RTLD_LAZY);
+    }
     if (!libvpu_isp)
     {
         libvpu_isp = dlopen("/mnt/system/usr/lib/libisp.so", RTLD_GLOBAL | RTLD_LAZY);
@@ -954,6 +1006,10 @@ static int load_vpu_library()
     libvpu_cvi_bin_isp = dlopen("libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_cvi_bin_isp)
     {
+        libvpu_cvi_bin_isp = dlopen("/mnt/system/lib/libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
+    }
+    if (!libvpu_cvi_bin_isp)
+    {
         libvpu_cvi_bin_isp = dlopen("/mnt/system/usr/lib/libcvi_bin_isp.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_cvi_bin_isp)
@@ -965,6 +1021,10 @@ static int load_vpu_library()
     libvpu_cvi_bin = dlopen("libcvi_bin.so", RTLD_GLOBAL | RTLD_LAZY);
     if (!libvpu_cvi_bin)
     {
+        libvpu_cvi_bin = dlopen("/mnt/system/lib/libcvi_bin.so", RTLD_GLOBAL | RTLD_LAZY);
+    }
+    if (!libvpu_cvi_bin)
+    {
         libvpu_cvi_bin = dlopen("/mnt/system/usr/lib/libcvi_bin.so", RTLD_GLOBAL | RTLD_LAZY);
     }
     if (!libvpu_cvi_bin)
@@ -973,20 +1033,45 @@ static int load_vpu_library()
         goto OUT;
     }
 
-#ifdef DUO_SDK_V2
-    libvpu = dlopen("libvpss.so", RTLD_LOCAL | RTLD_NOW);
-    if (!libvpu)
+    if (get_duo_sdk_variant() == 2)
     {
-        libvpu = dlopen("/mnt/system/usr/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
-    }
-#else
-    libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
-    if (!libvpu)
-    {
-        libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
-    }
-#endif
+        libvpu_vo = dlopen("libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        if (!libvpu_vo)
+        {
+            libvpu_vo = dlopen("/mnt/system/lib/libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libvpu_vo)
+        {
+            libvpu_vo = dlopen("/mnt/system/usr/lib/libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libvpu_vo)
+        {
+            fprintf(stderr, "%s\n", dlerror());
+            goto OUT;
+        }
 
+        libvpu = dlopen("libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        }
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/usr/lib/libvpss.so", RTLD_LOCAL | RTLD_NOW);
+        }
+    }
+    else
+    {
+        libvpu = dlopen("libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        }
+        if (!libvpu)
+        {
+            libvpu = dlopen("/mnt/system/usr/lib/libvpu.so", RTLD_LOCAL | RTLD_NOW);
+        }
+    }
     if (!libvpu)
     {
         fprintf(stderr, "%s\n", dlerror());
@@ -2197,13 +2282,24 @@ int jpeg_decoder_cvi_impl::decode(const unsigned char* jpgdata, int jpgsize, uns
 
         for (int i = 0; i < h2; i++)
         {
-#if __riscv_vector
+#if __riscv_vector_071
             int j = 0;
             int n = w2;
             while (n > 0) {
                 size_t vl = vsetvl_e8m8(n);
                 vuint8m8_t bgr = vle8_v_u8m8(ptr + j, vl);
                 vse8_v_u8m8(outbgr, bgr, vl);
+                outbgr += vl;
+                j += vl;
+                n -= vl;
+            }
+#elif __riscv_vector
+            int j = 0;
+            int n = w2;
+            while (n > 0) {
+                size_t vl = __riscv_vsetvl_e8m8(n);
+                vuint8m8_t bgr = __riscv_vle8_v_u8m8(ptr + j, vl);
+                __riscv_vse8_v_u8m8(outbgr, bgr, vl);
                 outbgr += vl;
                 j += vl;
                 n -= vl;
@@ -2242,7 +2338,7 @@ int jpeg_decoder_cvi_impl::decode(const unsigned char* jpgdata, int jpgsize, uns
 
         for (int i = 0; i < height; i++)
         {
-#if __riscv_vector
+#if __riscv_vector_071
             int j = 0;
             int n = width;
             while (n > 0) {
@@ -2250,6 +2346,18 @@ int jpeg_decoder_cvi_impl::decode(const unsigned char* jpgdata, int jpgsize, uns
                 vuint8m2_t g = vle8_v_u8m2(ptr + j, vl);
                 vuint8m2x3_t o = vcreate_u8m2x3(g, g, g);
                 vsseg3e8_v_u8m2x3(outbgr, o, vl);
+                outbgr += vl * 3;
+                j += vl;
+                n -= vl;
+            }
+#elif __riscv_vector
+            int j = 0;
+            int n = width;
+            while (n > 0) {
+                size_t vl = __riscv_vsetvl_e8m2(n);
+                vuint8m2_t g = __riscv_vle8_v_u8m2(ptr + j, vl);
+                vuint8m2x3_t o = __riscv_vcreate_v_u8m2x3(g, g, g);
+                __riscv_vsseg3e8_v_u8m2x3(outbgr, o, vl);
                 outbgr += vl * 3;
                 j += vl;
                 n -= vl;
