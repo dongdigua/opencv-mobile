@@ -2659,6 +2659,7 @@ typedef CVI_S32 (*PFN_CVI_BIN_ImportBinData)(CVI_U8 *pu8Buffer, CVI_U32 u32DataL
 }
 
 static void* libcvi_bin_cvi_bin_isp = 0;
+static void* libcvi_bin_vo = 0;
 static void* libcvi_bin_vpu = 0;
 static void* libcvi_bin = 0;
 
@@ -2671,6 +2672,12 @@ static int unload_cvi_bin_library()
     {
         dlclose(libcvi_bin_cvi_bin_isp);
         libcvi_bin_cvi_bin_isp = 0;
+    }
+
+    if (libcvi_bin_vo)
+    {
+        dlclose(libcvi_bin_vo);
+        libcvi_bin_vo = 0;
     }
 
     if (libcvi_bin_vpu)
@@ -2720,6 +2727,21 @@ static int load_cvi_bin_library()
 
     if (get_duo_sdk_variant() == 2)
     {
+        libcvi_bin_vo = dlopen("libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        if (!libcvi_bin_vo)
+        {
+            libcvi_bin_vo = dlopen("/mnt/system/lib/libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libcvi_bin_vo)
+        {
+            libcvi_bin_vo = dlopen("/mnt/system/usr/lib/libvo.so", RTLD_GLOBAL | RTLD_LAZY);
+        }
+        if (!libcvi_bin_vo)
+        {
+            fprintf(stderr, "%s\n", dlerror());
+            goto OUT;
+        }
+
         libcvi_bin_vpu = dlopen("libvpss.so", RTLD_GLOBAL | RTLD_LAZY);
         if (!libcvi_bin_vpu)
         {
